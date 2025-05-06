@@ -14,7 +14,7 @@ import pytesseract
 import subprocess
 from gym import spaces
 import tensorflow as tf
-from mss.linux import MSS as mss
+from mss import mss as mss
 from pynput import keyboard as kb
 from EldenReward import EldenReward
 from tensorboardX import SummaryWriter
@@ -76,7 +76,7 @@ def timer_callback(t_start):
         headers = {"Content-Type": "application/json"}
         json_message = {'timer':out_str}
         try:
-            requests.post(f"http://192.168.4.67:6000/obs/log/timer_update", headers=headers, data=json.dumps(json_message))
+            requests.post(f"http://127.0.0.1:6000/obs/log/timer_update", headers=headers, data=json.dumps(json_message))
         except:
             pass
         time.sleep(1)
@@ -275,7 +275,7 @@ class EldenEnv(gym.Env):
         self.parry_dict = {'vod_duration':None,
                            'parries': []}
         self.t_since_parry = None
-        self.parry_detector = tf.saved_model.load('parry_detector')
+        self.parry_detector = "dummy_prediction"#tf.saved_model.load('parry_detector')
         self.prev_step_end_ts = time.time()
         self.last_fps = []
         self.sct = mss()
@@ -293,7 +293,7 @@ class EldenEnv(gym.Env):
             minutes = int(matches[3])
             hours = int(matches[2])
             days = int(matches[1])
-            original_ts = time.time() - (seconds + (minutes * 60) + (hours * 60 * 60) + (days * 24 * 60* 60))
+            original_ts = time.time() - (seconds + (minutes * 60) + (hours * 60 * 60) + (days * 24 * 60 * 60))
             threading.Thread(target=timer_callback, args=(original_ts,)).start()
 
         #subprocess.Popen(['python', 'timer.py', '>', 'obs_timer.txt'])
@@ -323,7 +323,7 @@ class EldenEnv(gym.Env):
                 requests.post(f"http://{self.agent_ip}:6000/action/return_to_grace", headers=headers)
                 json_message = {'text': 'Collecting rollout buffer'}
                 headers = {"Content-Type": "application/json"}
-                requests.post(f"http://{self.stream_pc_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
+                requests.post(f"http://{self.agent_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
                 self.done = True
                 self.rewardGen.time_since_death = time.time()
                 
@@ -331,7 +331,7 @@ class EldenEnv(gym.Env):
                 headers = {"Content-Type": "application/json"}
                 requests.post(f"http://{self.agent_ip}:6000/action/init_fight", headers=headers)
                 try:
-                    requests.post(f"http://{self.stream_pc_ip}:6000/obs/recording/start", headers=headers)
+                    requests.post(f"http://{self.agent_ip}:6000/obs/recording/start", headers=headers)
                 except:
                     pass
                 self.rewardGen.dmg_timer = time.time()
@@ -460,7 +460,7 @@ class EldenEnv(gym.Env):
                     f.write(json.dumps(json_message))
                     f.write('\n')
                 try:
-                    requests.post(f"http://{self.stream_pc_ip}:6000/obs/recording/stop", headers=headers)
+                    requests.post(f"http://{self.agent_ip}:6000/obs/recording/stop", headers=headers)
                 except:
                     pass
                 #requests.post(f"http://{self.agent_ip}:6000/action/release_keys/{1}", headers=headers)
@@ -492,7 +492,7 @@ class EldenEnv(gym.Env):
                         f.write(json.dumps(json_message))
                         f.write('\n')
                     try:
-                        requests.post(f"http://{self.stream_pc_ip}:6000/obs/recording/stop", headers=headers)
+                        requests.post(f"http://{self.agent_ip}:6000/obs/recording/stop", headers=headers)
                     except:
                         pass
                     headers = {"Content-Type": "application/json"}
@@ -528,7 +528,7 @@ class EldenEnv(gym.Env):
                     f.write(json.dumps(json_message))
                     f.write('\n')
                 try:
-                    requests.post(f"http://{self.stream_pc_ip}:6000/obs/recording/stop", headers=headers)
+                    requests.post(f"http://{self.agent_ip}:6000/obs/recording/stop", headers=headers)
                 except:
                     pass
             self.done = True
@@ -585,7 +585,7 @@ class EldenEnv(gym.Env):
             requests.post(f"http://{self.agent_ip}:6000/action/return_to_grace", headers=headers)
             json_message = {'text': 'Collecting rollout buffer'}
             headers = {"Content-Type": "application/json"}
-            requests.post(f"http://{self.stream_pc_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
+            requests.post(f"http://{self.agent_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
             self.done = True
             self.rewardGen.time_since_death = time.time()
         return spaces_dict, self.reward, self.done, info
@@ -603,7 +603,7 @@ class EldenEnv(gym.Env):
 
         json_message = {'text': 'Check for frozen screen'}
         headers = {"Content-Type": "application/json"}
-        requests.post(f"http://{self.stream_pc_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
+        requests.post(f"http://{self.agent_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
         self.action_history = []
         avg_fps = 0
         for i in range(len(self.last_fps)):
@@ -624,7 +624,7 @@ class EldenEnv(gym.Env):
                         "lowest_boss_hp": avg_boss_hp}
 
         try:
-            requests.post(f"http://{self.stream_pc_ip}:6000/obs/log/attempt_update", headers=headers, data=json.dumps(json_message))
+            requests.post(f"http://{self.agent_ip}:6000/obs/log/attempt_update", headers=headers, data=json.dumps(json_message))
         except:
             pass
         frame = self.grab_screen_shot()
@@ -780,7 +780,7 @@ class EldenEnv(gym.Env):
         if (self.iteration % HORIZON_WINDOW) == 0:
             json_message = {'text': 'Training model'}
             headers = {"Content-Type": "application/json"}
-            requests.post(f"http://{self.stream_pc_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
+            requests.post(f"http://{self.agent_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
             #time.sleep(120)
         time.sleep(0.5)
         headers = {"Content-Type": "application/json"}
@@ -789,7 +789,7 @@ class EldenEnv(gym.Env):
 
         json_message = {'text': 'Step'}
         headers = {"Content-Type": "application/json"}
-        requests.post(f"http://{self.stream_pc_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
+        requests.post(f"http://{self.agent_ip}:6000/status/update", headers=headers, data=json.dumps(json_message))
         self.rewardGen.time_since_taken_dmg = time.time()
         return spaces_dict
 
