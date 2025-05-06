@@ -25,7 +25,7 @@ import base64
 from PIL import ImageGrab
 import cv2
 import pyautogui
-from mss.linux import MSS as mss
+from mss import mss as mss
 
 
 class EldenAgent:
@@ -73,13 +73,13 @@ def isLockedOn():
         print(percent_match)
         return False
 
-
+#리눅스 -> 윈도우 실행으로 변경
 def launch_er():
-    # The os.setsid() is passed in the argument preexec_fn so
-    # it's run after the fork() and before  exec() to run the shell.
-    subprocess.Popen('./run_er.sh', stdout=subprocess.PIPE, 
-                      shell=True, preexec_fn=os.setsid)
-
+    subprocess.Popen(
+        ["start", "", "run_er.bat"],
+        shell=True,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+    )
 
 def get_er_process_ids():
     with open("check_er.txt","wb") as out, open("check_er_stderr.txt","wb") as err:
@@ -607,3 +607,10 @@ def request_stats(char_slot=None):
             return json.dumps({'error':str(e)})
     else:
         return Response(status=400)
+
+@app.route('/')
+def hello_world():  # put application's code here
+    return 'Hello World!'
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=6000, debug=True)

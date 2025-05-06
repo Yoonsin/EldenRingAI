@@ -80,6 +80,7 @@ class EldenReward:
         #print(stats)
 
         self.previous_stats = self.current_stats
+        print(stats)
         self.current_stats = [stats['vigor'],
                               stats['mind'],
                               stats['endurance'],
