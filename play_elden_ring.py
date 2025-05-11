@@ -43,10 +43,11 @@ def update_status(text):
 
 
 def launch_er():
-    # The os.setsid() is passed in the argument preexec_fn so
-    # it's run after the fork() and before  exec() to run the shell.
-    subprocess.Popen('./run_er.sh', stdout=subprocess.PIPE, 
-                      shell=True, preexec_fn=os.setsid)
+    subprocess.Popen(
+        ["start", "", "run_er.bat"],
+        shell=True,
+        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+    )
 
 
 def get_er_process_ids():

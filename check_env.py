@@ -3,7 +3,8 @@ from stable_baselines3.common.env_checker import check_env
 
 
 
-env = EldenEnv()
+logdir = "C:\GitHub\EldenRingAI\log"
+env = EldenEnv(logdir)
 check_env(env)
 
 # episodes = 50

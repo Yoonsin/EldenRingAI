@@ -12,7 +12,7 @@ import pytesseract
 import subprocess
 from gym import spaces
 import tensorflow as tf
-from mss.linux import MSS as mss
+from mss import mss as mss
 from EldenReward import EldenReward
 from tensorboardX import SummaryWriter
 
@@ -192,7 +192,7 @@ class EldenEnv(gym.Env):
         self.parry_dict = {'vod_duration':None,
                            'parries': []}
         self.t_since_parry = None
-        self.parry_detector = tf.saved_model.load('parry_detector')
+        self.parry_detector = "dummy_prediction"
         self.prev_step_end_ts = time.time()
         self.last_fps = []
         self.sct = mss()
