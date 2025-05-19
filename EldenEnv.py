@@ -95,21 +95,37 @@ class AudioRecorder():
     # Audio class based on pyAudio and Wave
     def __init__(self):
         self.open = True
-        self.rate = 16000
-        self.frames_per_buffer = 16000 * 2
-        self.channels = 1
+        self.rate = 48000
+        self.frames_per_buffer = 1024
+        self.channels = 2
         self.format = pyaudio.paInt16
         self.audio_filename = "parry.wav"
         self.audio = pyaudio.PyAudio()
+
+        # for i in range(self.audio.get_device_count()):
+        #     info = self.audio.get_device_info_by_index(i)
+        #     print(f"Device {i}: {info}")
+
+        device_index = self.get_device_index_by_name("스테레오 믹스")
+        if device_index is None:
+            raise RuntimeError("스테레오 믹스 장치를 찾을 수 없습니다!")
+
         self.stream = self.audio.open(format=self.format,
                                       channels=self.channels,
                                       rate=self.rate,
                                       input=True,
                                       frames_per_buffer = self.frames_per_buffer,
-                                      input_device_index=19)
+                                      input_device_index=device_index)
         self.audio_frames = []
         self.active = False
 
+    def get_device_index_by_name(self,name_contains):
+        p = pyaudio.PyAudio()
+        for i in range(p.get_device_count()):
+            info = p.get_device_info_by_index(i)
+            if name_contains.lower() in info['name'].lower():
+                return i
+        return None
 
     # Audio starts being recorded
     def record(self, iter):
@@ -466,10 +482,13 @@ class EldenEnv(gym.Env):
         headers = {"Content-Type": "application/json"}
         response = requests.post(f"http://{self.agent_ip}:6000/action/check_er", headers=headers)
 
-        if ((time.time() - t_check_frozen_start) > 30) or lost_connection or (not response.json()['ER']):
+        data = response.json()
+        print(response.text)
+        if ((time.time() - t_check_frozen_start) > 30) or lost_connection or (not data.get('ER', False)):
             print(f"Lost connection: {lost_connection}")
             print(f"Loading Screen Length: {len(loading_screen_history)}")
-            print(f"Check ER: {not response.json()['ER']}")
+            print(f"Check ER: {not data.get('ER', False)}")
+
             headers = {"Content-Type": "application/json"}
             requests.post(f"http://{self.agent_ip}:6000/action/stop_elden_ring", headers=headers)
             time.sleep(5 * 60)

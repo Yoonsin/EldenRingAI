@@ -18,6 +18,7 @@ import threading
 import time
 import subprocess
 import os
+import psutil
 #import tensorflow as tf
 import numpy as np
 import wave
@@ -51,26 +52,28 @@ def launch_er():
 
 
 def get_er_process_ids():
-    proc1 = subprocess.Popen(['ps', 'aux'], stdout=subprocess.PIPE)
-    proc2 = subprocess.Popen(['grep', 'start_protected_game.exe'], stdin=proc1.stdout,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
     process_ids = []
-    proc1.stdout.close() # Allow proc1 to receive a SIGPIPE if proc2 exits.
-    out, err = proc2.communicate()
-    for line in str(out).split("james      "):
-        match = re.search(r"(\d+)+.*", line)
-        if not match is None:
-            process_ids.append(match[1])
+    for proc in psutil.process_iter(['pid', 'name']):
+        try:
+            # 엘든링 실행 파일 이름 확인 (확실히 포함되는지 확인 필요)
+            if proc.info['name'].lower() in ['start_protected_game.exe', 'eldenring.exe']:
+                process_ids.append(proc.info['pid'])
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
     return process_ids
 
 
 def stop_er():
-    cmd = ['kill', '-9']
-    for id in get_er_process_ids():
-        cmd.append(id)
-    subprocess.Popen(cmd, stdout=subprocess.PIPE)
-
+    for pid in get_er_process_ids():
+        try:
+            proc = psutil.Process(pid)
+            proc.terminate()  # 정상 종료 시도
+            proc.wait(timeout=5)  # 최대 5초 대기
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.TimeoutExpired):
+            try:
+                os.system(f'taskkill /PID {pid} /F')  # 강제 종료 (Fallback)
+            except Exception as e:
+                print(f"프로세스 강제 종료 실패: {e}")
 
 @app.route('/action/load_save', methods=["POST"])
 def load_save():
@@ -484,3 +487,11 @@ def request_stats(char_slot=None):
             return json.dumps({'error':str(e)})
     else:
         return Response(status=400)
+
+
+@app.route('/')
+def hello_world():  # put application's code here
+    return 'Hello World!'
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=6000, debug=True)
