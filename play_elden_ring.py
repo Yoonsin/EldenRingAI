@@ -149,8 +149,8 @@ def press_key(key_to_press, duration):
 def custom_action(action):
     if request.method == 'POST':
         try:
-            print('CUSTOM ACTION')
             action = int(action)
+            print(f'CUSTOM ACTION {action}')
             #update_status(f'Custom action: {action}')
             if action == 0:
                 elden_agent.keyboard.release('w')
@@ -212,26 +212,23 @@ def return_to_grace():
             elden_agent.keyboard.release('s')
             elden_agent.keyboard.release('a')
             elden_agent.keyboard.release('d')
+            elden_agent.keyboard.release('g')
+            elden_agent.keyboard.release('f')
 
             time.sleep(1)
+            elden_agent.keyboard.press('g')
+            time.sleep(1)
+            elden_agent.keyboard.press('f')
 
+            time.sleep(1)
             elden_agent.keyboard.press('e')
-            elden_agent.keyboard.press('3')
-            time.sleep(0.1)
+            time.sleep(0.5)
             elden_agent.keyboard.release('e')
-            elden_agent.keyboard.release('3')
-
-            time.sleep(1)
-
-            elden_agent.keyboard.press(kb.Key.left)
-            time.sleep(0.1)
-            elden_agent.keyboard.release(kb.Key.left)
-
-            time.sleep(1)
-
+            time.sleep(0.5)
             elden_agent.keyboard.press('e')
-            time.sleep(0.1)
+            time.sleep(0.5)
             elden_agent.keyboard.release('e')
+
             return Response(status=200)
         except Exception as e:
             return json.dumps({'error':str(e)})

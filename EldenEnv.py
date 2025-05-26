@@ -45,8 +45,8 @@ DISCRETE_ACTIONS = {'w': 'run_forwards',
 N_DISCRETE_ACTIONS = len(DISCRETE_ACTIONS)
 N_CHANNELS = 3
 IMG_WIDTH = 1920
-IMG_HEIGHT = 1080
-MODEL_HEIGHT = 450
+IMG_HEIGHT = 1200
+MODEL_HEIGHT = 450#500
 MODEL_WIDTH = 800
 CLASS_NAMES = ['successful_parries', 'missed_parries']
 HP_CHART = {}
@@ -56,6 +56,7 @@ with open('vigor_chart.csv', 'r') as v_chart:
         hp_amount = int(line.split(',')[1])
         HP_CHART[stat_point] = hp_amount
 #print(HP_CHART)
+
 
 
 def timer_callback(t_start):
@@ -102,6 +103,7 @@ class AudioRecorder():
         self.audio_filename = "parry.wav"
         self.audio = pyaudio.PyAudio()
 
+
         # for i in range(self.audio.get_device_count()):
         #     info = self.audio.get_device_info_by_index(i)
         #     print(f"Device {i}: {info}")
@@ -129,6 +131,9 @@ class AudioRecorder():
 
     # Audio starts being recorded
     def record(self, iter):
+        # AudioRecorder 클래스 내에서 파일 쓰기 전에 폴더 생성
+        os.makedirs("parries", exist_ok=True)
+
         self.active = True
         data = self.stream.read(self.frames_per_buffer) 
         self.audio_frames.append(data)
@@ -178,16 +183,18 @@ class EldenEnv(gym.Env):
         # They must be gym.spaces objects
         # Example when using discrete actions:
         self.action_space = spaces.Discrete(N_DISCRETE_ACTIONS)
+        print(f"cnt : {N_DISCRETE_ACTIONS}")
         # Example for using image as input (channel-first; channel-last also works):
         self.observation_space = spaces.Box(low=0, high=255,
                                             shape=(MODEL_HEIGHT, MODEL_WIDTH, N_CHANNELS), dtype=np.uint8)
 
         self.agent_ip = 'localhost'
         self.logger = SummaryWriter(os.path.join(logdir, 'PPO_0'))
+        self.debug_idx = 0
         
         headers = {"Content-Type": "application/json"}
         requests.post(f"http://{self.agent_ip}:6000/action/start_elden_ring", headers=headers)
-        time.sleep(90)
+        time.sleep(70)
 
         headers = {"Content-Type": "application/json"}
         requests.post(f"http://{self.agent_ip}:6000/action/load_save", headers=headers)
@@ -208,7 +215,7 @@ class EldenEnv(gym.Env):
         self.parry_dict = {'vod_duration':None,
                            'parries': []}
         self.t_since_parry = None
-        self.parry_detector = "dummy_prediction"
+        self.parry_detector =  tf.saved_model.load("parry_detector")
         self.prev_step_end_ts = time.time()
         self.last_fps = []
         self.sct = mss()
@@ -231,6 +238,9 @@ class EldenEnv(gym.Env):
 
     def step(self, action):
         print('step start')
+        self.logger.add_scalar('chosen_action', int(action), self.iteration)
+        print(f"[ACTION SELECTED]: {int(action)}")
+
         t0 = time.time()
         if not self.first_step:
             if t0 - self.prev_step_end_ts > 5:
@@ -294,13 +304,29 @@ class EldenEnv(gym.Env):
             audio_input = np.expand_dims(audio_input, axis=0)
             audio_input = audio_input.astype(np.float32)
             #print(audio_input.shape)
+            # FFT 결과 shape: (1, 2048, 1)
             fft = audio_to_fft(audio_input)
-            pred = self.parry_detector(fft)
+
+            # (1, 2048, 1) → (1, 2048)
+            fft = tf.squeeze(fft, axis=-1)
+
+            # (1, 2048) → (1, 512, 1)
+            fft = tf.image.resize(tf.expand_dims(fft, -1), [512, 1])
+
+            # (1, 512, 1) → (1, 512)
+            fft = tf.reshape(fft, (1, 512))  # ✅ 이 줄로 shape을 정확히 명시
+            print("Final FFT shape:", fft.shape)
+
+            result = self.parry_detector.signatures["serving_default"](keras_tensor=tf.convert_to_tensor(fft, dtype=tf.float32))
+            pred = result['output_0'].numpy()[0][0]
+
             pred = np.squeeze(pred)
-            pred_idx = np.argmax(pred, axis=0)
-            print(pred_idx)
-            if CLASS_NAMES[int(pred_idx)] == 'successful_parries' and pred[int(pred_idx)] > 0.99:
+            if pred > 0.99:
                 parry_reward = 1
+            # pred_idx = np.argmax(pred, axis=0)
+            # print(pred_idx)
+            # if CLASS_NAMES[int(pred_idx)] == 'successful_parries' and pred[int(pred_idx)] > 0.99:
+            #     parry_reward = 1
 
         t3 = time.time()
         self.logger.add_scalar('time_alive', time_alive, self.iteration)
@@ -315,10 +341,15 @@ class EldenEnv(gym.Env):
 
         self.reward = time_alive + percent_through + hp + dmg_reward + find_reward # + parry_reward
 
-        print('custom action')
-        if not self.death and not self.done:
+        print(f"[STEP STATUS] death: {self.death}, done: {self.done}, first_step: {self.first_step}, time_since_seen_boss: {self.rewardGen.time_since_seen_boss}, time limit: {time.time() - self.t_start} ")
+        print(f"[STEP DECISION] using action: {action}")
+
+        if not self.done:
+            if self.death:
+                print(f"[!] Agent died, but still processing this step for learning.")
             # Time limit for fighting Tree sentienel (600 seconds or 10 minutes)
-            if (time.time() - self.t_start) > TOTAL_ACTIONABLE_TIME and self.rewardGen.time_since_seen_boss > 2.5:
+            else:
+               if (time.time() - self.t_start) > TOTAL_ACTIONABLE_TIME and self.rewardGen.time_since_seen_boss > 2.5:
                 headers = {"Content-Type": "application/json"}
                 requests.post(f"http://{self.agent_ip}:6000/action/custom/{4}", headers=headers)
                 requests.post(f"http://{self.agent_ip}:6000/action/release_keys/{1}", headers=headers)
@@ -328,10 +359,11 @@ class EldenEnv(gym.Env):
                 self.done = True
                 self.reward = -1
                 self.rewardGen.time_since_death = time.time()
-            else:
+               else:
                 if int(action) == 10:
                     self.time_since_r = time.time()
                 headers = {"Content-Type": "application/json"}
+                print(int(action))
                 requests.post(f"http://{self.agent_ip}:6000/action/custom/{int(action)}", headers=headers)
                 
                 self.consecutive_deaths = 0
@@ -344,10 +376,10 @@ class EldenEnv(gym.Env):
                     self.consecutive_deaths = 0
                     headers = {"Content-Type": "application/json"}
                     requests.post(f"http://{self.agent_ip}:6000/action/stop_elden_ring", headers=headers)
-                    time.sleep(5 * 60)
+                    time.sleep(2 * 60)
                     headers = {"Content-Type": "application/json"}
                     requests.post(f"http://{self.agent_ip}:6000/action/start_elden_ring", headers=headers)
-                    time.sleep(180)
+                    time.sleep(100)
 
                     headers = {"Content-Type": "application/json"}
                     requests.post(f"http://{self.agent_ip}:6000/action/load_save", headers=headers)
@@ -368,7 +400,6 @@ class EldenEnv(gym.Env):
         t4 = time.time()
         observation = cv2.resize(frame, (MODEL_WIDTH, MODEL_HEIGHT))
         info = {}
-        self.first_step = False
         self.iteration += 1
 
         if self.reward < -1:
@@ -396,10 +427,12 @@ class EldenEnv(gym.Env):
         time_to_sleep = desired_fps - (t_end - t0)
         #print(1 / (time.time() - t0))
         if time_to_sleep > 0:
+            print(time_to_sleep)
             time.sleep(time_to_sleep)
         self.logger.add_scalar('step_time', (time.time() - t0), self.iteration)
         self.logger.add_scalar('FPS', 1 / (time.time() - t0), self.iteration)
         self.prev_step_end_ts = time.time()
+        self.first_step = False
         if (self.iteration % 32768) == 0:
             json_message = {'text': 'Collecting rollout buffer'}
             headers = {"Content-Type": "application/json"}
@@ -455,10 +488,12 @@ class EldenEnv(gym.Env):
         t_since_seen_next = None
         while True:
             frame = self.grab_screen_shot()
-            next_text_image = frame[1015:1040, 155:205]
-            next_text_image = cv2.resize(next_text_image, ((205-155)*3, (1040-1015)*3))
-            next_text = pytesseract.image_to_string(next_text_image,  lang='eng',config='--psm 6 --oem 3')
-            loading_screen = "Next" in next_text
+            next_text_image = frame[1120:1150, 160:260]  # Y, X
+            next_text_image = cv2.resize(next_text_image, ((260 - 160) * 3, (1150 - 1120) * 3))
+            next_text = pytesseract.image_to_string(next_text_image,  lang='kor+eng',config='--psm 6 --oem 3')
+            cv2.imwrite(f"debug_hp/boss_name_debug{self.debug_idx}.png", next_text_image)
+            self.debug_idx += 1
+            loading_screen = "다음" in next_text #next
             if loading_screen:
                 t_since_seen_next = time.time()
             if not t_since_seen_next is None and ((time.time() - t_check_frozen_start) > 7.5) and (time.time() - t_since_seen_next) > 7.5:
@@ -491,10 +526,10 @@ class EldenEnv(gym.Env):
 
             headers = {"Content-Type": "application/json"}
             requests.post(f"http://{self.agent_ip}:6000/action/stop_elden_ring", headers=headers)
-            time.sleep(5 * 60)
+            time.sleep(2 * 60)
             headers = {"Content-Type": "application/json"}
             requests.post(f"http://{self.agent_ip}:6000/action/start_elden_ring", headers=headers)
-            time.sleep(180)
+            time.sleep(100)
 
             headers = {"Content-Type": "application/json"}
             requests.post(f"http://{self.agent_ip}:6000/action/load_save", headers=headers)

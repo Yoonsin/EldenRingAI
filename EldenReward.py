@@ -11,6 +11,9 @@ import tensorflow as tf
 TOTAL_ACTIONABLE_TIME = 120
 HP_CHART = {}
 
+debug_dir = "debug_hp"
+os.makedirs(debug_dir, exist_ok=True)
+
 with open('vigor_chart.csv', 'r') as v_chart:
     for line in v_chart.readlines():
         stat_point = int(line.split(',')[0])
@@ -33,6 +36,7 @@ class EldenReward:
         self.max_hp = None
         self.prev_hp = None
         self.curr_hp = None
+        self.debug_idx =0
 
         self.hp_ratio = 0.403
 
@@ -81,12 +85,14 @@ class EldenReward:
                               stats['intelligence'],
                               stats['faith'],
                               stats['arcane']]
-        self.max_hp = HP_CHART[self.current_stats[0]]
+        self.max_hp = 434#HP_CHART[self.current_stats[0]]
+        print(f"max_hp : {self.max_hp}")
         self.time_alive_multiplier = 1
 
 
     def _get_runes_held(self, frame):
-        runes_image = frame[1020:1050, 1715:1868]
+        runes_image = frame[1133:1166, 1715:1868]
+        cv2.imwrite("debug_hp/runes_debug.png", frame[1133:1166, 1715:1868])
         runes_image = cv2.resize(runes_image, (154*3, 30*3))
         runes_held = pytesseract.image_to_string(runes_image,  lang='eng',config='--psm 6 --oem 3 -c tessedit_char_whitelist=0123456789')
         if runes_held != "":
@@ -96,17 +102,29 @@ class EldenReward:
 
 
     def _get_boss_name(self, frame):
-        boss_name = frame[842:860, 450:650]
-        boss_name = cv2.resize(boss_name, ((650-450)*3, (860-842)*3))
-        boss_name = pytesseract.image_to_string(boss_name,  lang='eng',config='--psm 6 --oem 3')
+        boss_name = frame[890:930, 450:650]
+        #debug_frame = frame.copy()
+        #cv2.rectangle(debug_frame, (450, 890), (650 , 930), (255, 0, 0),2)  # 시각적 확인
+        #cv2.imwrite(f"debug_hp/boss_name_debug{self.debug_idx}.png", debug_frame)
+        #self.debug_idx+=1
+        boss_name = cv2.resize(boss_name, ((650-450)*3, (930-890)*3))
+        boss_name = pytesseract.image_to_string(boss_name,  lang='kor+eng',config='--psm 6 --oem 3')
+
         if boss_name != "":
-            return boss_name
+            print(boss_name.strip())
+            return boss_name.strip()
         else:
             return None
 
     
     def _get_boss_dmg(self, frame):
-        boss_dmg = frame[840:860, 1410:1480]
+        boss_dmg = frame[933:955, 1410:1480]
+
+        debug_frame = frame.copy()
+        cv2.rectangle(debug_frame, (1410, 933), (1480 , 955), (255, 0, 0),2)  # 시각적 확인
+        cv2.imwrite(f"debug_hp/boss_dmg_{self.debug_idx}.png", debug_frame)
+        self.debug_idx+=1
+
         boss_dmg = cv2.resize(boss_dmg, ((1480-1410)*3, (860-840)*3))
         boss_dmg = pytesseract.image_to_string(boss_dmg,  lang='eng',config='--psm 6 --oem 3')
         if boss_dmg != "":
@@ -114,6 +132,24 @@ class EldenReward:
         else:
             return 0
 
+    def get_player_hp(self, frame):
+        # 1920x1200 해상도에서 파란색 체력바 위치 추정
+        hp_bar_region = frame[64:81, 160:280]
+
+        # RGB → HSV
+        hsv = cv2.cvtColor(hp_bar_region, cv2.COLOR_RGB2HSV)
+
+        # 파란색 HSV 범위
+        lower_blue = np.array([100, 100, 50])
+        upper_blue = np.array([130, 255, 255])
+        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+
+        # 체력 비율 계산
+        blue_pixel_count = cv2.countNonZero(blue_mask)
+        total_pixel_count = blue_mask.size
+        hp_ratio = blue_pixel_count / total_pixel_count
+
+        return hp_ratio
         
     def update(self, frame):
         self.iteration += 1
@@ -144,7 +180,12 @@ class EldenReward:
         if not self.death:
             t0 = time.time()
             # if self.time_since_last_hp_change > 1.0:
-            hp_image = frame[51:55, 155:155 + int(self.max_hp * self.hp_ratio) - 20]
+            hp_image = frame[105:115, 155:155 + int(self.max_hp * self.hp_ratio) - 20]
+            #debug_frame = frame.copy()
+            #cv2.rectangle(debug_frame, (155, 105), (155 + int(self.max_hp * self.hp_ratio) - 20, 115), (255, 0, 0), 2)  # 시각적 확인
+
+            #cv2.imwrite(f"debug_hp/hp_debug{self.debug_idx}.png", debug_frame)
+            #self.debug_idx += 1
             lower = np.array([0,150,75])
             upper = np.array([150,255,125])
             hsv = cv2.cvtColor(hp_image, cv2.COLOR_RGB2HSV)
@@ -176,8 +217,27 @@ class EldenReward:
                 num_samples = 15 if len(self.hp_history) > 15 else len(self.hp_history)
                 for i in range(num_samples):
                     total_hp_reward += self.hp_history[-(i + 1)]
-                
 
+
+            #debugging
+                # 디버깅 인덱스 초기화
+                # if not hasattr(self, 'debug_idx'):
+                #     self.debug_idx = 0
+                # else:
+                #     self.debug_idx += 1
+                #
+                # # 시각화용 복사
+                # #debug_frame = frame.copy()
+                # tmp = self.get_player_hp(frame)
+                #
+                # cv2.rectangle(debug_frame, (160, 100), (540, 115), (255, 0, 0), 2)  # 시각적 확인
+                # cv2.putText(debug_frame, f"HP Ratio (Blue): {self.hp_ratio:.3f}", (30, 50),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2)
+                # cv2.imwrite("debug_hp/frame_debug.png", debug_frame)
+                #
+                # print(f"[DEBUG HP] Frame {self.debug_idx:05d} - HP Ratio: {tmp:.3f}")
+
+                # 이후 원래 로직 계속 진행됨...
 
             boss_name = ""
             if not self.seen_boss and time.time() - self.time_since_check_for_boss > 2:
@@ -188,7 +248,7 @@ class EldenReward:
             boss_find_reward = 0
             boss_timeout = 2.5
             # set_hp = False
-            if not boss_name is None and 'Tree Sentinel' in boss_name:
+            if not boss_name is None and ('트리 가드' in boss_name or 'Tree Sentinel' in boss_name):
                 if not self.seen_boss:
                     self.time_till_fight = 1 - ((time.time() - self.time_since_reset) / TOTAL_ACTIONABLE_TIME)
                 self.seen_boss = True
@@ -220,7 +280,8 @@ class EldenReward:
         
         boss_hp = 1
         if self.seen_boss and not self.death:
-            boss_hp_image = frame[869:873, 475:1460]
+            boss_hp_image = frame[965:970, 475:1460]
+            cv2.imwrite("debug_hp/boss_hp.png", frame[965:970, 475:1460])
             lower = np.array([0,0,75])
             upper = np.array([150,255,255])
             hsv = cv2.cvtColor(boss_hp_image, cv2.COLOR_RGB2HSV)
@@ -292,4 +353,4 @@ class EldenReward:
                 self.boss_hp_history = []
                 return time_alive_reward, percent_through_fight_reward, total_hp_reward, True, boss_dmg_reward, boss_find_reward, self.time_since_seen_boss
             else:
-                return time_alive_reward, percent_through_fight_reward, total_hp_reward, self.death, boss_dmg_reward, boss_find_reward, self.time_since_seen_boss
+                return time_alive_reward, percent_through_fight_reward, total_hp_reward, False, boss_dmg_reward, boss_find_reward, self.time_since_seen_boss
