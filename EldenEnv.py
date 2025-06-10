@@ -45,8 +45,8 @@ DISCRETE_ACTIONS = {'w': 'run_forwards',
 N_DISCRETE_ACTIONS = len(DISCRETE_ACTIONS)
 N_CHANNELS = 3
 IMG_WIDTH = 1920
-IMG_HEIGHT = 1200
-MODEL_HEIGHT = 450#500
+IMG_HEIGHT = 1080
+MODEL_HEIGHT = 450
 MODEL_WIDTH = 800
 CLASS_NAMES = ['successful_parries', 'missed_parries']
 HP_CHART = {}
@@ -195,7 +195,7 @@ class EldenEnv(gym.Env):
         requests.post(f"http://{self.agent_ip}:6000/action/load_save", headers=headers)
         
         self.reward = 0
-        self.rewardGen = EldenReward(1, logdir)
+        self.rewardGen = EldenReward(2, logdir)
         self.death = False
         self.t_start = time.time()
         self.done = False
@@ -306,6 +306,8 @@ class EldenEnv(gym.Env):
         t2 = time.time()
         time_alive, percent_through, hp, self.death, dmg_reward, find_reward, time_since_boss_seen = self.rewardGen.update(frame)
 
+
+
         audio_buffer = self.audio_cap.get_audio()
         if not audio_buffer is None:
             audio_input = np.expand_dims(np.frombuffer(audio_buffer, dtype=np.int16), axis=-1)
@@ -348,6 +350,14 @@ class EldenEnv(gym.Env):
             hp = 0
 
         self.reward = time_alive + percent_through + hp + dmg_reward + find_reward # + parry_reward
+
+        print(f"Reward time alive: {time_alive}")
+        print(f"Reward fight percent_through : {percent_through}") #fight boss hp
+        print(f"Reward hp : {hp}")
+        print(f"Reward dmg_reward : {dmg_reward}")
+        #print(f"Reward find_reward : {find_reward}")
+
+
 
         print(f"[STEP STATUS] death: {self.death}, done: {self.done}, first_step: {self.first_step}, time_since_seen_boss: {self.rewardGen.time_since_seen_boss}, time limit: {time.time() - self.t_start} ")
         print(f"[STEP DECISION] using action: {action}")
@@ -496,14 +506,21 @@ class EldenEnv(gym.Env):
         t_since_seen_next = None
         while True:
             frame = self.grab_screen_shot()
-            next_text_image = frame[1120:1150, 160:260]  # Y, X
-            next_text_image = cv2.resize(next_text_image, ((260 - 160) * 3, (1150 - 1120) * 3))
-            next_text = pytesseract.image_to_string(next_text_image,  lang='kor+eng',config='--psm 6 --oem 3')
-            cv2.imwrite(f"debug_hp/boss_name_debug{self.debug_idx}.png", next_text_image)
+            x1, y1, x2, y2 = 205, 1010, 265, 1060
+
+            next_text_image = frame[y1:y2, x1:x2]
+            next_text_image = cv2.resize(next_text_image, ((x2 - x1) * 3, (y2 - y1) * 3))
+            next_text = pytesseract.image_to_string(next_text_image, lang='kor+eng', config='--psm 6 --oem 3')
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 255), 2)  # 빨간색 사각형
+            #cv2.imwrite(f"debug_hp/next_text_debug{self.debug_idx}.png", frame)
             self.debug_idx += 1
             loading_screen = "다음" in next_text #next
+
+            print(f"{next_text}")
             if loading_screen:
                 t_since_seen_next = time.time()
+                print("loading screen")
             if not t_since_seen_next is None and ((time.time() - t_check_frozen_start) > 7.5) and (time.time() - t_since_seen_next) > 7.5:
                 break
             elif not t_since_seen_next is None and  ((time.time() - t_check_frozen_start) > 30):

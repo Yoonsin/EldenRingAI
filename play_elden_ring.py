@@ -236,7 +236,7 @@ def return_to_grace():
         return Response(status=400)
 
 
-@app.route('/action/init_fight', methods=["POST"])
+@app.route('/action/ssd', methods=["POST"])
 def init_fight():
     if request.method == 'POST':
         try:
@@ -254,7 +254,7 @@ def init_fight():
 
             elden_agent.keyboard.press('d')
             #elden_agent.keyboard.press(kb.Key.space)
-            time.sleep(1)
+            time.sleep(1.3)
             elden_agent.keyboard.release('d')
             #elden_agent.keyboard.press('w')
             time.sleep(2.5)

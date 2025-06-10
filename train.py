@@ -6,7 +6,7 @@ import time
 
 ts = time.time()
 models_dir = f"models/{int(ts)}/"
-logdir = f"logs/{int(ts)}/"
+logdir = r"EldenRingAI/log/"
 
 if not os.path.exists(models_dir):
 	os.makedirs(models_dir)
@@ -16,12 +16,13 @@ if not os.path.exists(logdir):
 
 env = EldenEnv(logdir)
 env.reset()
-TIMESTEPS = 100000000
+TIMESTEPS = 1000 #100000000
 
-model = PPO('CnnPolicy', env, tensorboard_log=logdir, n_steps=32768)
+model = PPO('CnnPolicy', env, tensorboard_log=logdir, n_steps=1280)
 
 iters = 0
 while True:
 	iters += 1
 	model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=True, tb_log_name=f"PPO")
 	model.save(f"{models_dir}/{TIMESTEPS*iters}")
+	print("iters end")
