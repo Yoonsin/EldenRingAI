@@ -14,14 +14,12 @@ HP_CHART = {}
 debug_dir = "debug_hp"
 os.makedirs(debug_dir, exist_ok=True)
 
+#vigor_chart.csv -> 생명력에 맞는 체력량을 저장하는 딕셔너리
 with open('vigor_chart.csv', 'r') as v_chart:
     for line in v_chart.readlines():
         stat_point = int(line.split(',')[0])
         hp_amount = int(line.split(',')[1])
         HP_CHART[stat_point] = hp_amount
-
-
-
 
 
 class EldenReward:
@@ -53,6 +51,7 @@ class EldenReward:
 
         self.agent_ip = 'localhost'
         self._request_stats()
+
         self.boss_max_hp = 3200
         self.logger = SummaryWriter(os.path.join(logdir, 'PPO_0'))
         self.iteration = 0
@@ -74,7 +73,7 @@ class EldenReward:
         headers = {"Content-Type": "application/json"}
         response = requests.get(f"http://{self.agent_ip}:6000/stats/{self.character_slot}", headers=headers)
         stats = response.json()
-        #print(stats)
+        print(stats)
 
         self.previous_stats = self.current_stats
         self.current_stats = [stats['vigor'],
@@ -85,7 +84,7 @@ class EldenReward:
                               stats['intelligence'],
                               stats['faith'],
                               stats['arcane']]
-        self.max_hp = 434#HP_CHART[self.current_stats[0]]
+        self.max_hp = HP_CHART[self.current_stats[0]]
         print(f"max_hp : {self.max_hp}")
         self.time_alive_multiplier = 1
 

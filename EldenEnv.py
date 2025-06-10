@@ -57,8 +57,6 @@ with open('vigor_chart.csv', 'r') as v_chart:
         HP_CHART[stat_point] = hp_amount
 #print(HP_CHART)
 
-
-
 def timer_callback(t_start):
     while True:
         with open('obs_timer.txt', 'w') as f:
@@ -67,8 +65,6 @@ def timer_callback(t_start):
             f.write(str(days).zfill(2) + ":")
             f.write(str(time.strftime('%H:%M:%S', duration)))
         time.sleep(1)
-
-
 
 def audio_to_fft(audio):
     # Since tf.signal.fft applies FFT on the innermost dimension,
@@ -84,13 +80,11 @@ def audio_to_fft(audio):
     # which represents the positive frequencies
     return tf.math.abs(fft[:, : (32000 // 2), :])
 
-
 def path_to_audio(path):
     """Reads and decodes an audio file."""
     audio = tf.io.read_file(path)
     audio, _ = tf.audio.decode_wav(audio, 1, 2 * 16000)
     return audio
-
 
 class AudioRecorder():
     # Audio class based on pyAudio and Wave
@@ -102,7 +96,6 @@ class AudioRecorder():
         self.format = pyaudio.paInt16
         self.audio_filename = "parry.wav"
         self.audio = pyaudio.PyAudio()
-
 
         # for i in range(self.audio.get_device_count()):
         #     info = self.audio.get_device_info_by_index(i)
@@ -192,10 +185,12 @@ class EldenEnv(gym.Env):
         self.logger = SummaryWriter(os.path.join(logdir, 'PPO_0'))
         self.debug_idx = 0
         
+        # Start Elden Ring
         headers = {"Content-Type": "application/json"}
         requests.post(f"http://{self.agent_ip}:6000/action/start_elden_ring", headers=headers)
         time.sleep(70)
 
+        # Load save file
         headers = {"Content-Type": "application/json"}
         requests.post(f"http://{self.agent_ip}:6000/action/load_save", headers=headers)
         
@@ -211,20 +206,23 @@ class EldenEnv(gym.Env):
         self.num_runs = 0
         self.max_reward = None
         self.time_since_r = time.time()
+        
         self.reward_history = []
         self.parry_dict = {'vod_duration':None,
                            'parries': []}
         self.t_since_parry = None
         self.parry_detector =  tf.saved_model.load("parry_detector")
+
         self.prev_step_end_ts = time.time()
         self.last_fps = []
         self.sct = mss()
         self.audio_cap = AudioRecorder()
         self.boss_hp_end_history = []
+
+        #Timer thread to keep track of time
         threading.Thread(target=timer_callback, args=(time.time(),)).start()
 
         #subprocess.Popen(['python', 'timer.py', '>', 'obs_timer.txt'])
-
 
     def grab_screen_shot(self):
         for num, monitor in enumerate(self.sct.monitors[1:], 1):
@@ -233,16 +231,21 @@ class EldenEnv(gym.Env):
 
             # Create the Image
             #decoded = cv2.imdecode(np.frombuffer(sct_img, np.uint8), -1)
+            #BGRA to RGB conversion (NumPy array)
             return cv2.cvtColor(np.asarray(sct_img), cv2.COLOR_BGRA2RGB)
 
-
     def step(self, action):
+        #model takes an action
         print('step start')
+
+        #tensorboard logging - action per iteration
         self.logger.add_scalar('chosen_action', int(action), self.iteration)
         print(f"[ACTION SELECTED]: {int(action)}")
 
+        #now time stamp
         t0 = time.time()
         if not self.first_step:
+            # If the last step was more than 5 seconds ago, we need to reset the game
             if t0 - self.prev_step_end_ts > 5:
                 headers = {"Content-Type": "application/json"}
                 #requests.post(f"http://{self.agent_ip}:6000/recording/stop", headers=headers)
@@ -256,9 +259,11 @@ class EldenEnv(gym.Env):
             self.logger.add_scalar('time_between_steps', t0 - self.prev_step_end_ts, self.iteration)
 
         parry_reward = 0
-        if int(action) == 9:
+        if int(action) == 9: #guard action
+            # Start recording audio for parry detection
             self.audio_cap.start(self.iteration)
             self.parry_dict['parries'].append(time.time() - self.t_start)
+        
         # if int(action) == 9:
         #     if self.t_since_parry is None or (time.time() - self.t_since_parry) > 2.1:
         #         headers = {"Content-Type": "application/json"}
@@ -286,6 +291,7 @@ class EldenEnv(gym.Env):
         #             parry_reward = 1
         #     except Exception as e:
         #         print(str(e))
+        
         print('focus window')
         t1 = time.time()
 
@@ -293,7 +299,9 @@ class EldenEnv(gym.Env):
         headers = {"Content-Type": "application/json"}
         requests.post(f"http://{self.agent_ip}:6000/action/release_keys", headers=headers)
 
+        
         frame = self.grab_screen_shot()
+        
         print('reward update')
         t2 = time.time()
         time_alive, percent_through, hp, self.death, dmg_reward, find_reward, time_since_boss_seen = self.rewardGen.update(frame)

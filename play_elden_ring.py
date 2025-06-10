@@ -471,14 +471,14 @@ def request_stats(char_slot=None):
         try:
             print('GET STATS')
             stats = get_stats(int(char_slot))
-            json_stats = {'vigor' : stats[0],
-                        'mind' : stats[1],
-                        'endurance' : stats[2],
-                        'strength' : stats[3],
-                        'dexterity' : stats[4],
-                        'intelligence' : stats[5],
-                        'faith' : stats[6],
-                        'arcane' : stats[7]}
+            json_stats = {'vigor' : stats[0],      #생명력
+                        'mind' : stats[1],         #정신력
+                        'endurance' : stats[2],    #지구력
+                        'strength' : stats[3],     #근력
+                        'dexterity' : stats[4],    #기량
+                        'intelligence' : stats[5], #지력
+                        'faith' : stats[6],        #신앙
+                        'arcane' : stats[7]}       #신비
             return json.dumps(json_stats)
         except Exception as e:
             return json.dumps({'error':str(e)})
